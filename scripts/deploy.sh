@@ -29,6 +29,7 @@ function build_and_deploy_lambda() {
   yarn esbuild --bundle src/index.ts --outdir=dist --minify --platform=node
   zip dist/handler.zip dist/index.js
 
+  # NOTE: we could remove the conditional here if it was provisioned
   if aws lambda get-function --function-name $SERVICE_FUNCTION_NAME; then
     aws lambda update-function-code \
     --function-name "$SERVICE_FUNCTION_NAME" \
@@ -43,7 +44,7 @@ function build_and_deploy_lambda() {
       --role "$LAMBDA_ARN_ROLE"
   fi
 
-  wait_a_bit_for_eventual_consistency
+  aws lambda wait function-updated --function-name "$SERVICE_FUNCTION_NAME"
 
   FUNCTION_VERSION=$(aws lambda publish-version --function-name $SERVICE_FUNCTION_NAME | jq .Version --raw-output)
   ALIAS_FUNCTION_NAME="v$FUNCTION_VERSION"
@@ -79,6 +80,13 @@ function update_api_gateway() {
         --http-method ANY \
         --authorization-type "NONE"
 
+  # FIXME: if the script fails here we will end up in a bad state:
+  # "An error occurred (BadRequestException) when calling the CreateDeployment operation: No integration defined for method"
+  # This seems like a hard error to recover from as removing stale resources with integrations
+  # could mess with other deployment processes running.
+  # If we ignore that then we would need to:
+  # 1) combine the results from "aws apigateway get-resources" and "aws apigateway get-integration"
+
   # integrate the lambda function
   aws apigateway put-integration \
         --rest-api-id "$API_REST_ID" \
@@ -93,6 +101,8 @@ function update_api_gateway() {
   wait_a_bit_for_eventual_consistency
 
   # finally deploy the gateway
+  # TODO: running multiple deployment (in case of multiple entities calling this script might fail)
+  # This is likely solved in the aws-sdk
   aws apigateway create-deployment --rest-api-id "$API_REST_ID" --stage-name staging
 
   echo "API is live in a few seconds at https://$API_REST_ID.execute-api.$AWS_REGION.amazonaws.com/staging/$ALIAS_FUNCTION_NAME/greet"
