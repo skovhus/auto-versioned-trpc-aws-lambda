@@ -53,23 +53,36 @@ The deployment requires a bit of provisioning.
 
 ```sh
 export AWS_REGION=eu-west-1
+export SERVICE_FUNCTION_NAME="versioned-trpc"
+export SERVICE_GATEWAY="versioned-trpc-gateway"
+export SERVICE_LAMBDA_ROLE="versioned-trpc-lambda-role"
 
 # create an IAM role for the lambda
-aws iam create-role --role-name versioned-trpc-lambda-role --assume-role-policy-document file://trust-policy-lambda.json
+aws iam create-role --role-name "$SERVICE_LAMBDA_ROLE" --assume-role-policy-document file://trust-policy-lambda.json
 
 # attach a policy so API Gateway can integrate with the lambda
-aws iam attach-role-policy --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaRole --role-name versioned-trpc-lambda-role
+aws iam attach-role-policy --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaRole --role-name "$SERVICE_LAMBDA_ROLE"
 
 # create an API Gateway
-aws apigateway create-rest-api --region $AWS_REGION --name 'versioned-trpc-gateway'
+aws apigateway create-rest-api --region $AWS_REGION --name "$SERVICE_GATEWAY"
+
+# create a dummy lambda function
+export LAMBDA_ARN_ROLE=$(aws iam get-role --role-name $SERVICE_LAMBDA_ROLE | jq .Role.Arn --raw-output)
+echo "console.log('hello')" > dummy.js && zip dummy.zip dummy.js
+aws lambda create-function \
+      --function-name "$SERVICE_FUNCTION_NAME" \
+      --runtime nodejs14.x \
+      --zip-file fileb://dummy.zip \
+      --handler dist/index.handler \
+      --role "$LAMBDA_ARN_ROLE"
 ```
 
 ## AWS Deployment
 
 Run the continous deployment of the service.
 
-```sh
-AWS_REGION=eu-west-1 sh scripts/deploy.sh
+```
+AWS_REGION=eu-west-1 yarn esno scripts/deploy.ts
 ```
 
 ## AWS Clean up

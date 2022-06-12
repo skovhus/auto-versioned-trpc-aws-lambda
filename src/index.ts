@@ -10,7 +10,6 @@ export function createContext({
 }: CreateLambdaContextOptions<APIGatewayProxyEvent>) {
   return {
     event,
-    apiVersion: (event as { version?: string }).version || "1.0",
     user: event.headers["x-user"],
   };
 }
@@ -18,7 +17,7 @@ type Context = trpc.inferAsyncReturnType<typeof createContext>;
 
 const nestedRouter = trpc.router<Context>().query("greet", {
   async resolve(req) {
-    return `Greetings from sub.`;
+    return `Greetings from sub router.`;
   },
 });
 

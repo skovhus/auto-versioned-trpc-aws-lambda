@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# NOTE: Use the deploy.ts script instead that handles a lot more corner cases.
+
 # TODO: skip deployments if nothing changed (is hash needed then?)
 
 set -euxo pipefail
