@@ -1,8 +1,8 @@
-import * as trpc from "@trpc/server";
-import type { CreateLambdaContextOptions } from "./adapters/lambda";
 import type { APIGatewayProxyEvent } from "aws-lambda";
-import { lambdaRequestHandler } from "./adapters/lambda";
 import type { Context as APIGWContext } from "aws-lambda";
+import * as trpc from "@trpc/server";
+import { lambdaRequestHandler } from "@trpc/server/adapters/lambda";
+import type { CreateLambdaContextOptions } from "@trpc/server/adapters/lambda";
 
 export function createContext({
   event,

@@ -759,10 +759,10 @@
     "@esbuild-kit/core-utils" "^1.3.1"
     get-tsconfig "^3.0.1"
 
-"@trpc/server@^9.24.0":
-  version "9.24.0"
-  resolved "https://registry.yarnpkg.com/@trpc/server/-/server-9.24.0.tgz#4b02090af8283600a0237457968997d1c7f55aca"
-  integrity sha512-yrWMXl6kTgd3o1zE8zkw10KttY8xeilZRvxlpXhLGeeGaBqfvWdU+ljpBK1eSC5j9uDJrMc1gaNqtA++B8Zoqg==
+"@trpc/server@^9.25.0":
+  version "9.25.0"
+  resolved "https://registry.yarnpkg.com/@trpc/server/-/server-9.25.0.tgz#2986d3cefdb61fe19da953ec0d35f05afc70bb3a"
+  integrity sha512-kARZT3wnM5l1S9tXRsAOM6g/kZg/9UONTfPyvKH9lb2ekpISp6/EhD+cvb/qpq+959cvnWkCTO/rz08A2LWeag==
 
 "@types/aws-lambda@^8.10.97":
   version "8.10.97"
