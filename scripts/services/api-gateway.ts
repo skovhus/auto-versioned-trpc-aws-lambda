@@ -8,6 +8,18 @@ export const apiGatewayClient = new apiGateway.APIGatewayClient({
   region: AWS_REGION,
 });
 
+export async function ensureApiResponds(url: string) {
+  const tStart = new Date().getTime();
+  execSync(`
+    curl --connect-timeout 5 \
+      --max-time 5 \
+      --retry 5 \
+      --retry-delay 0 \
+      --silent \
+      '${url}'`);
+  console.log(`Endpoint responded after ${new Date().getTime() - tStart}ms`);
+}
+
 /**
  * Get the ID of the service.
  */
@@ -64,6 +76,18 @@ export async function createResources({
   );
 
   return { proxyResourceId };
+}
+
+export function getUrl({
+  aliasFunctionName,
+  restApiId,
+  stageName,
+}: {
+  aliasFunctionName: string;
+  restApiId: string;
+  stageName: string;
+}) {
+  return `https://${restApiId}.execute-api.${AWS_REGION}.amazonaws.com/${stageName}/${aliasFunctionName}`;
 }
 
 /**

@@ -139,10 +139,15 @@ async function updateApiGateway({
   const stageName = SERVICE_GATEWAY_STAGE_NAME;
   await ApiGatewayService.deploy({ restApiId, stageName });
 
-  // TODO: poll until ready (responds with a healthy response) and fail if it isn't ready in x seconds
-  console.info(
-    `API is live in a few seconds at https://${restApiId}.execute-api.${AWS_REGION}.amazonaws.com/${stageName}/${aliasFunctionName}/greet`
-  );
+  const serviceUrl = ApiGatewayService.getUrl({
+    aliasFunctionName,
+    restApiId,
+    stageName,
+  });
+  const healthEndpoint = `${serviceUrl}/health`;
+  await ApiGatewayService.ensureApiResponds(healthEndpoint);
+
+  console.info(`API is live at ${healthEndpoint}`);
 }
 
 const run = async () => {
