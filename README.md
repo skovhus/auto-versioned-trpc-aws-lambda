@@ -25,7 +25,7 @@ Some observations when looking at how this is handled in different frameworks an
 - Remix: Any action on the page (e.g. forms) will break if the client is outdated and the loader is not compatible...
 - tRPC: the community suggests keeping the client up to date
 
-### Multiple immutable auto versioned tRPC servers
+## Proposal: Multiple immutable auto versioned tRPC servers
 
 In this proof of concept, we look into automatic versioning of endpoints. The idea: deploy multiple immutable tRPC servers – each prefixed with a hash of the content of the server.
 

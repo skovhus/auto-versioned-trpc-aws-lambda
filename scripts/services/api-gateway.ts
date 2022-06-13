@@ -1,6 +1,6 @@
-import * as apiGateway from "@aws-sdk/client-api-gateway";
 import { execSync } from "child_process";
 import { strict as assert } from "node:assert";
+import * as apiGateway from "@aws-sdk/client-api-gateway";
 
 import { AWS_REGION, SERVICE_GATEWAY } from "../config";
 
