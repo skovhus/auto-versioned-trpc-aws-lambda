@@ -31,6 +31,15 @@ In this proof of concept, we look into automatic versioning of endpoints. The id
 
 Here we are using the node.js AWS SDK to deploy the AWS Lambda – any declarative framework (e.g. Terrraform or Serverless) doesn't fit well with creating a lot of dynamic resources for each deployment.
 
+What goes on behind the scenes?
+
+For every deploy:
+1. Update lambda function code + publish it + create an alias to that specific version
+2. AWS API Gateway: create resource matching the auto generated version key → create a `{proxy+}` child resource
+3. AWS API gateway: integrate the new version of the lambda function with the proxy resource → release the gateway
+
+⚠️ Note that AWS makes this a multi step process to update their API Gateway with the dynamic resource... And we can end up in a bad state if the deployment fails while create resources – something the deploy script takes care of. 
+
 ## Local development
 
 Setup:
