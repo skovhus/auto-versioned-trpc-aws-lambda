@@ -218,3 +218,16 @@ async function cleanUpIncompleteApiResources({
     );
   }
 }
+
+export async function isDeployed({
+  restApiId,
+  aliasFunctionName,
+}: {
+  restApiId: string;
+  aliasFunctionName: string;
+}) {
+  // TODO: we should probably check if deployed also went through
+  return (await getAllApiResources({ restApiId })).some(({ path }) =>
+    path?.includes(`/${aliasFunctionName}/{proxy+}`)
+  );
+}

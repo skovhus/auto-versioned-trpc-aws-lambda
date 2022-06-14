@@ -59,12 +59,41 @@ async function deployLambda({ zipFilePath }: { zipFilePath: string }): Promise<{
   const aliasFunctionName = contentHash;
 
   if (await LambdaService.isAliasDeployed(aliasFunctionName)) {
-    console.info(
-      `Skipping deployment as ${aliasFunctionName} is already deployed`
+    const restApiId = await ApiGatewayService.getRestApiId();
+
+    const isGatewayDeployed = await ApiGatewayService.isDeployed({
+      aliasFunctionName,
+      restApiId,
+    });
+
+    if (isGatewayDeployed) {
+      console.info(
+        `Skipping deployment as ${aliasFunctionName} is already deployed ${ApiGatewayService.getUrl(
+          {
+            aliasFunctionName,
+            restApiId,
+            stageName: SERVICE_GATEWAY_STAGE_NAME,
+          }
+        )}`
+      );
+      process.exit(0);
+    }
+
+    // This handles a corner case if the Gateway was not deployed or
+    // re-provisioned.
+    const { AliasArn: aliasArn } = await lambdaClient.send(
+      new lambda.GetAliasCommand({
+        FunctionName: SERVICE_FUNCTION_NAME,
+        Name: aliasFunctionName,
+      })
     );
-    // FIXME: actually we should check if this is also in the API gateway
-    // as the deployment process could have crashed before it was deployed.
-    process.exit(0);
+    assert(aliasArn);
+
+    console.info(
+      `Warning: a lambda for ${aliasFunctionName} is already deployed but API Gateway was not updated.`
+    );
+
+    return { aliasArn, aliasFunctionName };
   }
 
   // Update the lambda function
@@ -152,9 +181,11 @@ async function updateApiGateway({
 
 const run = async () => {
   const { zipFilePath } = await build();
+
   const { aliasArn, aliasFunctionName } = await deployLambda({
     zipFilePath,
   });
+
   await updateApiGateway({ aliasArn, aliasFunctionName });
 };
 
