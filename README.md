@@ -34,11 +34,12 @@ Here we are using the node.js AWS SDK to deploy the AWS Lambda – any declarati
 What goes on behind the scenes?
 
 For every deploy:
+
 1. Update lambda function code + publish it + create an alias to that specific version
 2. AWS API Gateway: create resource matching the auto generated version key → create a `{proxy+}` child resource
 3. AWS API gateway: integrate the new version of the lambda function with the proxy resource → release the gateway
 
-⚠️ Note that AWS makes this a multi step process to update their API Gateway with the dynamic resource... And we can end up in a bad state if the deployment fails while create resources – something the deploy script takes care of. 
+⚠️ Note that AWS makes this a multi step process to update their API Gateway with the dynamic resource... And we can end up in a bad state if the deployment fails while create resources – something the deploy script takes care of.
 
 ## Local development
 
@@ -71,7 +72,11 @@ aws iam create-role --role-name "$SERVICE_LAMBDA_ROLE" --assume-role-policy-docu
 aws iam attach-role-policy --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaRole --role-name "$SERVICE_LAMBDA_ROLE"
 
 # create an API Gateway
-aws apigateway create-rest-api --region $AWS_REGION --name "$SERVICE_GATEWAY"
+aws apigateway create-rest-api \
+      --region $AWS_REGION \
+      --name "$SERVICE_GATEWAY" \
+      --endpoint-configuration '{ "types": ["REGIONAL"] }'
+
 
 # create a dummy lambda function
 export LAMBDA_ARN_ROLE=$(aws iam get-role --role-name $SERVICE_LAMBDA_ROLE | jq .Role.Arn --raw-output)
