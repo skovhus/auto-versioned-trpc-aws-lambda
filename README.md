@@ -29,17 +29,14 @@ Some observations when looking at how this is handled in different frameworks an
 
 In this proof of concept, we look into automatic versioning of endpoints. The idea: deploy multiple immutable tRPC servers – each prefixed with a hash of the content of the server.
 
-Here we are using the node.js AWS SDK to deploy the AWS Lambda – any declarative framework (e.g. Terrraform or Serverless) doesn't fit well with creating a lot of dynamic resources for each deployment.
+Here we are using the node.js AWS SDK to deploy the AWS Lambda.
 
 What goes on behind the scenes?
 
 For every deploy:
 
-1. Update lambda function code + publish it + create an alias to that specific version
-2. AWS API Gateway: create resource matching the auto generated version key → create a `{proxy+}` child resource
-3. AWS API gateway: integrate the new version of the lambda function with the proxy resource → release the gateway
-
-⚠️ Note that AWS makes this a multi step process to update their API Gateway with the dynamic resource... And we can end up in a bad state if the deployment fails while create resources – something the deploy script takes care of.
+1. Check if any lambda matches the hash of the server (skip the rest if that is the case)
+2. Create a new lambda function + add a Function URL
 
 ## Local development
 
@@ -61,32 +58,10 @@ The deployment requires a bit of provisioning.
 
 ```sh
 export AWS_REGION=eu-west-1
-export SERVICE_FUNCTION_NAME="versioned-trpc"
-export SERVICE_GATEWAY="versioned-trpc-gateway"
 export SERVICE_LAMBDA_ROLE="versioned-trpc-lambda-role"
 
 # create an IAM role for the lambda
 aws iam create-role --role-name "$SERVICE_LAMBDA_ROLE" --assume-role-policy-document file://trust-policy-lambda.json
-
-# attach a policy so API Gateway can integrate with the lambda
-aws iam attach-role-policy --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaRole --role-name "$SERVICE_LAMBDA_ROLE"
-
-# create an API Gateway
-aws apigateway create-rest-api \
-      --region $AWS_REGION \
-      --name "$SERVICE_GATEWAY" \
-      --endpoint-configuration '{ "types": ["REGIONAL"] }'
-
-
-# create a dummy lambda function
-export LAMBDA_ARN_ROLE=$(aws iam get-role --role-name $SERVICE_LAMBDA_ROLE | jq .Role.Arn --raw-output)
-echo "console.log('hello')" > dummy.js && zip dummy.zip dummy.js
-aws lambda create-function \
-      --function-name "$SERVICE_FUNCTION_NAME" \
-      --runtime nodejs14.x \
-      --zip-file fileb://dummy.zip \
-      --handler dist/index.handler \
-      --role "$LAMBDA_ARN_ROLE"
 ```
 
 ## AWS Deployment
@@ -102,8 +77,6 @@ AWS_REGION=eu-west-1 yarn esno scripts/deploy.ts
 This should clean up most of the mess this proof of concept created in your AWS account...
 
 ```sh
-aws lambda delete-function --function-name versioned-trpc
-aws apigateway delete-rest-api --rest-api-id=$(aws apigateway get-rest-apis --query 'items[?name==`versioned-trpc-gateway`]' | jq '.[0].id' --raw-output)
-aws iam detach-role-policy --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaRole --role-name versioned-trpc-lambda-role
+# TODO: script to delete functions
 aws iam delete-role --role-name versioned-trpc-lambda-role
 ```

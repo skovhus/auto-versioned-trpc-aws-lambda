@@ -1,26 +1,46 @@
-import * as apiGateway from "@aws-sdk/client-api-gateway";
-import * as lambda from "@aws-sdk/client-lambda";
 import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
 import { strict as assert } from "node:assert";
 
-import {
-  AWS_REGION,
-  SERVICE_FUNCTION_NAME,
-  SERVICE_GATEWAY_STAGE_NAME,
-  ROOT_PATH,
-} from "./config";
+import * as lambda from "@aws-sdk/client-lambda";
+import * as iam from "@aws-sdk/client-iam";
 
-import * as ApiGatewayService from "./services/api-gateway";
-import * as LambdaService from "./services/lambda";
+const AWS_REGION = process.env.AWS_REGION || "eu-west-1";
+const SERVICE_FUNCTION_NAME = "versioned-trpc";
+const SERVICE_LAMBDA_ROLE = "versioned-trpc-lambda-role";
+const ROOT_PATH = path.join(__dirname, "../");
 
-const { lambdaClient } = LambdaService;
-const { apiGatewayClient } = ApiGatewayService;
+const lambdaClient = new lambda.LambdaClient({ region: AWS_REGION });
+const iamClient = new iam.IAMClient({ region: AWS_REGION });
+
+async function ensureApiResponds(url: string) {
+  const tStart = new Date().getTime();
+  execSync(`
+    curl --connect-timeout 5 \
+      --max-time 5 \
+      --retry 5 \
+      --retry-delay 0 \
+      --silent \
+      '${url}'`);
+  console.log(`Endpoint responded after ${new Date().getTime() - tStart}ms`);
+}
+
+async function getLambdaArnRole(): Promise<string> {
+  const { Role } = await iamClient.send(
+    new iam.GetRoleCommand({
+      RoleName: SERVICE_LAMBDA_ROLE,
+    })
+  );
+  const lambdaArnRole = Role?.Arn;
+  assert(lambdaArnRole);
+  return lambdaArnRole;
+}
 
 /**
  * Builds and zips the application.
+ * Should likely done before running this script.
  */
 async function build(): Promise<{ zipFilePath: string }> {
   const handlerZipPath = "dist/handler.zip";
@@ -35,6 +55,9 @@ async function build(): Promise<{ zipFilePath: string }> {
   return { zipFilePath: path.join(ROOT_PATH, handlerZipPath) };
 }
 
+/**
+ * Compute the has of the zip file content.
+ */
 function getHashOfZipFileContent(zipFilePath: string) {
   const tmpPath = fs.mkdtempSync(os.tmpdir());
 
@@ -49,144 +72,92 @@ function getHashOfZipFileContent(zipFilePath: string) {
 }
 
 /**
- * Deploys the given zip file as a lambda and creates an alias.
+ * Deploys the given zip file as a new lambda with a public function.
  */
-async function deployLambda({ zipFilePath }: { zipFilePath: string }): Promise<{
-  aliasFunctionName: string;
-  aliasArn: string;
-}> {
+async function deployLambda({ zipFilePath }: { zipFilePath: string }) {
   const contentHash = getHashOfZipFileContent(zipFilePath);
-  const aliasFunctionName = contentHash;
+  const FunctionName = `${SERVICE_FUNCTION_NAME}-${contentHash}`;
 
-  if (await LambdaService.isAliasDeployed(aliasFunctionName)) {
-    const restApiId = await ApiGatewayService.getRestApiId();
-
-    const isGatewayDeployed = await ApiGatewayService.isDeployed({
-      aliasFunctionName,
-      restApiId,
-    });
-
-    if (isGatewayDeployed) {
-      console.info(
-        `Skipping deployment as ${aliasFunctionName} is already deployed ${ApiGatewayService.getUrl(
-          {
-            aliasFunctionName,
-            restApiId,
-            stageName: SERVICE_GATEWAY_STAGE_NAME,
-          }
-        )}`
-      );
-      process.exit(0);
-    }
-
-    // This handles a corner case if the Gateway was not deployed or
-    // re-provisioned.
-    const { AliasArn: aliasArn } = await lambdaClient.send(
-      new lambda.GetAliasCommand({
-        FunctionName: SERVICE_FUNCTION_NAME,
-        Name: aliasFunctionName,
+  // Check if the lambda and Function URL is already deployed
+  try {
+    const { FunctionUrl } = await lambdaClient.send(
+      new lambda.GetFunctionUrlConfigCommand({
+        FunctionName,
       })
     );
-    assert(aliasArn);
-
-    console.info(
-      `Warning: a lambda for ${aliasFunctionName} is already deployed but API Gateway was not updated.`
+    assert(FunctionUrl);
+    console.log(
+      `Skipping deployment as this is already live at ${FunctionUrl}`
     );
-
-    return { aliasArn, aliasFunctionName };
+    process.exit(0);
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      "ResourceNotFoundException" !== error.name
+    ) {
+      throw error;
+    }
   }
 
-  // Update the lambda function
+  // FIXME: handle the case where the function and permissions are created
+  // but the Function URL isn't.
+
+  // Create a new lambda function
+  // TODO: we could use aliases if we don't like to create a new lambda function.
   await lambdaClient.send(
-    new lambda.UpdateFunctionCodeCommand({
-      FunctionName: SERVICE_FUNCTION_NAME,
-      ZipFile: fs.readFileSync(zipFilePath),
+    new lambda.CreateFunctionCommand({
+      FunctionName,
+      Role: await getLambdaArnRole(),
+      Runtime: lambda.Runtime.nodejs16x,
+      Handler: "dist/index.handler",
+      Code: {
+        ZipFile: fs.readFileSync(zipFilePath),
+      },
     })
   );
 
-  // Wait until it is updated
+  // Wait until the lambda is created
+  // TODO: not sure if this is strictly required
   const { state: waiterState } = await lambda.waitUntilFunctionUpdated(
     {
       client: lambdaClient,
       maxWaitTime: 30, // seconds
     },
-    { FunctionName: SERVICE_FUNCTION_NAME }
+    { FunctionName }
   );
   assert(waiterState === "SUCCESS");
 
-  // Publish the new version
-  const { Version: FunctionVersion } = await lambdaClient.send(
-    new lambda.PublishVersionCommand({
-      FunctionName: SERVICE_FUNCTION_NAME,
-    })
-  );
-  assert(FunctionVersion);
-
-  // Create an alias
-  const { AliasArn: aliasArn } = await lambdaClient.send(
-    new lambda.CreateAliasCommand({
-      FunctionName: SERVICE_FUNCTION_NAME,
-      Name: aliasFunctionName,
-      FunctionVersion,
-    })
-  );
-  assert(aliasArn);
-
-  return { aliasArn, aliasFunctionName };
-}
-
-/**
- * Updates the API Gateway with new resources and integrations to expose the given function.
- */
-async function updateApiGateway({
-  aliasArn,
-  aliasFunctionName,
-}: {
-  aliasArn: string;
-  aliasFunctionName: string;
-}) {
-  const restApiId = await ApiGatewayService.getRestApiId();
-
-  const { proxyResourceId } = await ApiGatewayService.createResources({
-    aliasFunctionName,
-    restApiId,
-  });
-
-  // integrate the lambda function with the proxy resource
-  await apiGatewayClient.send(
-    new apiGateway.PutIntegrationCommand({
-      restApiId,
-      resourceId: proxyResourceId,
-      httpMethod: "ANY",
-      integrationHttpMethod: "POST",
-      type: "AWS_PROXY",
-      credentials: await LambdaService.getLambdaArnRole(),
-      uri: `arn:aws:apigateway:${AWS_REGION}:lambda:path/2015-03-31/functions/${aliasArn}/invocations`,
+  // Add required permissions for public usage of the function
+  await lambdaClient.send(
+    new lambda.AddPermissionCommand({
+      FunctionName,
+      Action: "lambda:InvokeFunctionUrl",
+      StatementId: "FunctionURLAllowPublicAccess",
+      Principal: "*",
+      FunctionUrlAuthType: "NONE",
     })
   );
 
-  const stageName = SERVICE_GATEWAY_STAGE_NAME;
-  await ApiGatewayService.deploy({ restApiId, stageName });
+  // Create a Function URL
+  const { FunctionUrl } = await lambdaClient.send(
+    new lambda.CreateFunctionUrlConfigCommand({
+      FunctionName,
+      AuthType: "NONE",
+    })
+  );
+  assert(FunctionUrl);
 
-  const serviceUrl = ApiGatewayService.getUrl({
-    aliasFunctionName,
-    restApiId,
-    stageName,
-  });
-  const healthEndpoint = `${serviceUrl}/health`;
-  await ApiGatewayService.ensureApiResponds(healthEndpoint);
+  await ensureApiResponds(FunctionUrl);
 
-  console.info(`API is live at ${healthEndpoint}`);
+  console.info(`🎄 Deployed at ${FunctionUrl}`);
 }
 
 const run = async () => {
   const { zipFilePath } = await build();
 
-  const { aliasArn, aliasFunctionName } = await deployLambda({
+  await deployLambda({
     zipFilePath,
   });
-
-  await updateApiGateway({ aliasArn, aliasFunctionName });
 };
 
 run();
