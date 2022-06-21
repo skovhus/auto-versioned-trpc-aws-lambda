@@ -62,6 +62,9 @@ export SERVICE_LAMBDA_ROLE="versioned-trpc-lambda-role"
 
 # create an IAM role for the lambda
 aws iam create-role --role-name "$SERVICE_LAMBDA_ROLE" --assume-role-policy-document file://trust-policy-lambda.json
+
+aws iam attach-role-policy --role-name "$SERVICE_LAMBDA_ROLE" --policy-arn arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
 ```
 
 ## AWS Deployment

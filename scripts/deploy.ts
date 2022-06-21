@@ -7,6 +7,8 @@ import { strict as assert } from "node:assert";
 import * as lambda from "@aws-sdk/client-lambda";
 import * as iam from "@aws-sdk/client-iam";
 
+import { build } from "./build";
+
 const AWS_REGION = process.env.AWS_REGION || "eu-west-1";
 const SERVICE_FUNCTION_NAME = "versioned-trpc";
 const SERVICE_LAMBDA_ROLE = "versioned-trpc-lambda-role";
@@ -36,23 +38,6 @@ async function getLambdaArnRole(): Promise<string> {
   const lambdaArnRole = Role?.Arn;
   assert(lambdaArnRole);
   return lambdaArnRole;
-}
-
-/**
- * Builds and zips the application.
- * Should likely done before running this script.
- */
-async function build(): Promise<{ zipFilePath: string }> {
-  const handlerZipPath = "dist/handler.zip";
-
-  execSync(
-    "yarn esbuild --bundle src/index.ts --outdir=dist --minify --platform=node",
-    { cwd: ROOT_PATH }
-  );
-
-  execSync(`zip ${handlerZipPath} dist/index.js`, { cwd: ROOT_PATH });
-
-  return { zipFilePath: path.join(ROOT_PATH, handlerZipPath) };
 }
 
 /**
