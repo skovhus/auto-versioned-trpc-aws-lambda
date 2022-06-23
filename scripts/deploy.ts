@@ -96,17 +96,6 @@ async function deployLambda({ zipFilePath }: { zipFilePath: string }) {
       })
     );
 
-    // Wait until the lambda is created
-    // TODO: not sure if this is strictly required
-    const { state: waiterState } = await lambda.waitUntilFunctionUpdated(
-      {
-        client: lambdaClient,
-        maxWaitTime: 30, // seconds
-      },
-      { FunctionName }
-    );
-    assert(waiterState === "SUCCESS");
-
     // Add required permissions for public usage of the function
     await lambdaClient.send(
       new lambda.AddPermissionCommand({
