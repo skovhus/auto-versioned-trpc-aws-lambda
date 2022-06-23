@@ -1,18 +1,15 @@
 import { execSync } from "child_process";
 import fs from "fs";
-import path from "path";
-import os from "os";
 import { strict as assert } from "node:assert";
 
 import * as lambda from "@aws-sdk/client-lambda";
 import * as iam from "@aws-sdk/client-iam";
 
 import { build } from "./build";
+import { getConfig } from "./config";
+import { computeVersion } from "./versioning";
 
-const AWS_REGION = process.env.AWS_REGION || "eu-west-1";
-const SERVICE_FUNCTION_NAME = "versioned-trpc";
-const SERVICE_LAMBDA_ROLE = "versioned-trpc-lambda-role";
-const ROOT_PATH = path.join(__dirname, "../");
+const { AWS_REGION, SERVICE_FUNCTION_NAME, SERVICE_LAMBDA_ROLE } = getConfig();
 
 const lambdaClient = new lambda.LambdaClient({ region: AWS_REGION });
 const iamClient = new iam.IAMClient({ region: AWS_REGION });
@@ -41,27 +38,12 @@ async function getLambdaArnRole(): Promise<string> {
 }
 
 /**
- * Compute the has of the zip file content.
- */
-function getHashOfZipFileContent(zipFilePath: string) {
-  const tmpPath = fs.mkdtempSync(os.tmpdir());
-
-  execSync(`unzip ${zipFilePath} -d ${tmpPath}`, { cwd: ROOT_PATH });
-
-  return execSync(
-    `find ${tmpPath} -type f -print0 | sort -z | xargs -0 shasum | awk '{ print $1 }' | shasum`
-  )
-    .toString()
-    .trim()
-    .substring(0, 10);
-}
-
-/**
  * Deploys the given zip file as a new lambda with a public function.
  */
 async function deployLambda({ zipFilePath }: { zipFilePath: string }) {
-  const contentHash = getHashOfZipFileContent(zipFilePath);
-  const FunctionName = `${SERVICE_FUNCTION_NAME}-${contentHash}`;
+  const version = computeVersion({ lambdaZipFilePath: zipFilePath });
+
+  const FunctionName = `${SERVICE_FUNCTION_NAME}-${version}`;
 
   // Check if the lambda and Function URL is already deployed
   try {
@@ -71,8 +53,8 @@ async function deployLambda({ zipFilePath }: { zipFilePath: string }) {
       })
     );
     assert(FunctionUrl);
-    console.log(
-      `Skipping deployment as this is already live at ${FunctionUrl}`
+    console.info(
+      `🏝 Skipping deployment as ${FunctionName} is already live at ${FunctionUrl}`
     );
     process.exit(0);
   } catch (error) {

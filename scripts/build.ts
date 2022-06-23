@@ -38,7 +38,7 @@ export async function build(): Promise<{ zipFilePath: string }> {
     JSON.stringify(tmpPackageJson)
   );
 
-  execSync("yarn install --no-lockfile && rm package.json", { cwd: distPath });
+  execSync("yarn install --no-lockfile", { cwd: distPath });
 
   const externals = EXTERNAL_DEPENDENCIES.map((d) => `--external:${d}`).join(
     " "
