@@ -3,7 +3,7 @@
  * Alternative would be to not use the lambda adapter for local development.
  */
 import express, { Express, Request, Response } from "express";
-import { handler } from ".";
+import { rawHandler } from ".";
 
 const app: Express = express();
 const port = process.env.PORT || 4000;
@@ -11,7 +11,7 @@ const port = process.env.PORT || 4000;
 app.get("*", async (req: Request, res: Response) => {
   const notImplemented = "notImplemented" as any;
 
-  const response = await handler(
+  const response = await rawHandler(
     {
       body: req.body,
       headers: {},
