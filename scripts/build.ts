@@ -3,15 +3,12 @@ import fs from "fs";
 import path from "path";
 
 import packageJson from "../package.json";
+import { getConfig } from "./config";
 
 const ROOT_PATH = path.join(__dirname, "../");
 
-// Dependencies to exclude from the bundle and minification
-const EXTERNAL_DEPENDENCIES: string[] = [];
-
 /**
  * Builds and zips the application.
- * TODO: should be done before running this script.
  */
 export async function build(): Promise<{ zipFilePath: string }> {
   const distPath = path.join(ROOT_PATH, "dist");
@@ -19,26 +16,30 @@ export async function build(): Promise<{ zipFilePath: string }> {
 
   execSync("rm -rf dist && mkdir dist", { cwd: ROOT_PATH });
 
-  const tmpPackageJson = {
-    dependencies: Object.entries(packageJson.dependencies)
-      .filter(([dependencyName]) =>
-        EXTERNAL_DEPENDENCIES.includes(dependencyName)
-      )
-      .reduce(
-        (prev, [dependencyName, version]) => ({
-          ...prev,
-          [dependencyName]: version,
-        }),
-        {}
-      ),
-  };
+  const { EXTERNAL_DEPENDENCIES } = getConfig();
 
-  fs.writeFileSync(
-    path.join(distPath, "package.json"),
-    JSON.stringify(tmpPackageJson)
-  );
+  if (EXTERNAL_DEPENDENCIES.length > 0) {
+    const tmpPackageJson = {
+      dependencies: Object.entries(packageJson.dependencies)
+        .filter(([dependencyName]) =>
+          EXTERNAL_DEPENDENCIES.includes(dependencyName)
+        )
+        .reduce(
+          (prev, [dependencyName, version]) => ({
+            ...prev,
+            [dependencyName]: version,
+          }),
+          {}
+        ),
+    };
 
-  execSync("yarn install --no-lockfile", { cwd: distPath });
+    fs.writeFileSync(
+      path.join(distPath, "package.json"),
+      JSON.stringify(tmpPackageJson)
+    );
+
+    execSync("yarn install --no-lockfile", { cwd: distPath });
+  }
 
   const externals = EXTERNAL_DEPENDENCIES.map((d) => `--external:${d}`).join(
     " "

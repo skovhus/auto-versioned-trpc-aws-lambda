@@ -8,5 +8,6 @@ export function getConfig() {
     AWS_REGION: process.env.AWS_REGION || "eu-west-1",
     SERVICE_FUNCTION_NAME: "versioned-trpc",
     SERVICE_LAMBDA_ROLE: "versioned-trpc-lambda-role",
+    EXTERNAL_DEPENDENCIES: process.env.EXTERNAL_DEPENDENCIES?.split(",") || [],
   };
 }
