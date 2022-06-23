@@ -9,5 +9,7 @@ export function getConfig() {
     SERVICE_FUNCTION_NAME: "versioned-trpc",
     SERVICE_LAMBDA_ROLE: "versioned-trpc-lambda-role",
     EXTERNAL_DEPENDENCIES: process.env.EXTERNAL_DEPENDENCIES?.split(",") || [],
+    LAMBDA_TIMEOUT: 30, // seconds
+    LAMBDA_MEMORY_SIZE: 512, // mb
   };
 }

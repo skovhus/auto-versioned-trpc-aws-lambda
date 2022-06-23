@@ -9,7 +9,13 @@ import { build } from "./build";
 import { getConfig } from "./config";
 import { computeVersion } from "./versioning";
 
-const { AWS_REGION, SERVICE_FUNCTION_NAME, SERVICE_LAMBDA_ROLE } = getConfig();
+const {
+  AWS_REGION,
+  SERVICE_FUNCTION_NAME,
+  SERVICE_LAMBDA_ROLE,
+  LAMBDA_MEMORY_SIZE,
+  LAMBDA_TIMEOUT,
+} = getConfig();
 
 const lambdaClient = new lambda.LambdaClient({ region: AWS_REGION });
 const iamClient = new iam.IAMClient({ region: AWS_REGION });
@@ -62,61 +68,87 @@ async function deployLambda({ zipFilePath }: { zipFilePath: string }) {
       !(error instanceof Error) ||
       "ResourceNotFoundException" !== error.name
     ) {
+      // Unexpected error
       throw error;
     }
   }
 
-  // FIXME: handle the case where the function and permissions are created
-  // but the Function URL isn't.
+  try {
+    // Create a new lambda function
+    // NOTE: we could use aliases if we don't like to create a new lambda function.
+    await lambdaClient.send(
+      new lambda.CreateFunctionCommand({
+        FunctionName,
+        Role: await getLambdaArnRole(),
+        Runtime: lambda.Runtime.nodejs16x,
+        Handler: "dist/index.handler",
+        Code: {
+          ZipFile: fs.readFileSync(zipFilePath),
+        },
+        Layers: [],
+        Environment: {
+          Variables: {
+            // TODO: figure out how to pass in runtime variables
+          },
+        },
+        MemorySize: LAMBDA_MEMORY_SIZE,
+        Timeout: LAMBDA_TIMEOUT,
+      })
+    );
 
-  // Create a new lambda function
-  // TODO: we could use aliases if we don't like to create a new lambda function.
-  await lambdaClient.send(
-    new lambda.CreateFunctionCommand({
-      FunctionName,
-      Role: await getLambdaArnRole(),
-      Runtime: lambda.Runtime.nodejs16x,
-      Handler: "dist/index.handler",
-      Code: {
-        ZipFile: fs.readFileSync(zipFilePath),
+    // Wait until the lambda is created
+    // TODO: not sure if this is strictly required
+    const { state: waiterState } = await lambda.waitUntilFunctionUpdated(
+      {
+        client: lambdaClient,
+        maxWaitTime: 30, // seconds
       },
-    })
-  );
+      { FunctionName }
+    );
+    assert(waiterState === "SUCCESS");
 
-  // Wait until the lambda is created
-  // TODO: not sure if this is strictly required
-  const { state: waiterState } = await lambda.waitUntilFunctionUpdated(
-    {
-      client: lambdaClient,
-      maxWaitTime: 30, // seconds
-    },
-    { FunctionName }
-  );
-  assert(waiterState === "SUCCESS");
+    // Add required permissions for public usage of the function
+    await lambdaClient.send(
+      new lambda.AddPermissionCommand({
+        FunctionName,
+        Action: "lambda:InvokeFunctionUrl",
+        StatementId: "FunctionURLAllowPublicAccess",
+        Principal: "*",
+        FunctionUrlAuthType: "NONE",
+      })
+    );
 
-  // Add required permissions for public usage of the function
-  await lambdaClient.send(
-    new lambda.AddPermissionCommand({
-      FunctionName,
-      Action: "lambda:InvokeFunctionUrl",
-      StatementId: "FunctionURLAllowPublicAccess",
-      Principal: "*",
-      FunctionUrlAuthType: "NONE",
-    })
-  );
+    // Create a Function URL
+    const { FunctionUrl } = await lambdaClient.send(
+      new lambda.CreateFunctionUrlConfigCommand({
+        FunctionName,
+        AuthType: "NONE",
+      })
+    );
+    assert(FunctionUrl);
 
-  // Create a Function URL
-  const { FunctionUrl } = await lambdaClient.send(
-    new lambda.CreateFunctionUrlConfigCommand({
-      FunctionName,
-      AuthType: "NONE",
-    })
-  );
-  assert(FunctionUrl);
+    await ensureApiResponds(FunctionUrl);
 
-  await ensureApiResponds(FunctionUrl);
+    console.info(`🎄 Deployed at ${FunctionUrl}`);
+  } catch (error) {
+    const leftoverDeployment =
+      error instanceof Error && "ResourceConflictException" === error.name;
 
-  console.info(`🎄 Deployed at ${FunctionUrl}`);
+    if (leftoverDeployment) {
+      console.warn(
+        `Trying to clean up from an unfinished deploy. ${error.message}`
+      );
+      await lambdaClient.send(
+        new lambda.DeleteFunctionCommand({ FunctionName })
+      );
+      console.info(
+        "Successfully cleaned up after a previous deploy... Please rerun the deploy"
+      );
+      process.exit(2);
+    }
+
+    throw error;
+  }
 }
 
 const run = async () => {
