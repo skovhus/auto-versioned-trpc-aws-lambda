@@ -9,6 +9,8 @@ const ROOT_PATH = path.join(__dirname, "../");
 
 /**
  * Builds and zips the application.
+ *
+ * TODO: This is likely an isolated step from the deploy script.
  */
 export async function build(): Promise<{ zipFilePath: string }> {
   const distPath = path.join(ROOT_PATH, "dist");
@@ -20,18 +22,17 @@ export async function build(): Promise<{ zipFilePath: string }> {
 
   if (EXTERNAL_DEPENDENCIES.length > 0) {
     const tmpPackageJson = {
-      dependencies: Object.entries(packageJson.dependencies)
-        .filter(([dependencyName]) =>
-          EXTERNAL_DEPENDENCIES.includes(dependencyName)
-        )
-        .reduce(
-          (prev, [dependencyName, version]) => ({
-            ...prev,
-            [dependencyName]: version,
-          }),
-          {}
-        ),
+      dependencies: {} as Record<string, string>,
     };
+    EXTERNAL_DEPENDENCIES.forEach((externalDependency) => {
+      const version = (packageJson.dependencies as any)[externalDependency];
+      if (!version) {
+        throw new Error(
+          `External dependency "${externalDependency}" was not found in package.json`
+        );
+      }
+      tmpPackageJson.dependencies[externalDependency] = version;
+    });
 
     fs.writeFileSync(
       path.join(distPath, "package.json"),
