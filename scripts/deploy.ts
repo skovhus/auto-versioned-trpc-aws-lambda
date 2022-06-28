@@ -28,7 +28,10 @@ async function ensureApiResponds(url: string) {
       --retry 5 \
       --retry-delay 0 \
       --silent \
-      '${url}'`);
+      --show-error \
+      --fail \
+      '${url}health'
+  `);
   console.log(`Endpoint responded after ${new Date().getTime() - tStart}ms`);
 }
 
