@@ -76,6 +76,9 @@ async function deployLambda({ zipFilePath }: { zipFilePath: string }) {
     }
   }
 
+  const DD_API_KEY = process.env.DD_API_KEY;
+  assert(DD_API_KEY);
+
   try {
     // Create a new lambda function
     // NOTE: we could use aliases if we don't like to create a new lambda function.
@@ -84,13 +87,22 @@ async function deployLambda({ zipFilePath }: { zipFilePath: string }) {
         FunctionName,
         Role: await getLambdaArnRole(),
         Runtime: lambda.Runtime.nodejs16x,
-        Handler: "dist/index.handler",
+        Handler: "dist/node_modules/datadog-lambda-js/dist/handler.handler",
         Code: {
           ZipFile: fs.readFileSync(zipFilePath),
         },
-        Layers: [],
+        Layers: [
+          `arn:aws:lambda:${AWS_REGION}:464622532012:layer:Datadog-Extension:23`,
+        ],
         Environment: {
           Variables: {
+            DD_LAMBDA_HANDLER: "dist/index.handler",
+            DD_API_KEY,
+            DD_SITE: "datadoghq.eu",
+            DD_VERSION: version,
+            DD_ENV: "staging",
+            DD_SERVICE: "trpc",
+            DD_LOG_LEVEL: "info",
             // TODO: figure out how to pass in runtime variables
           },
         },
